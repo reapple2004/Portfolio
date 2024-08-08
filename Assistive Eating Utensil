@@ -1,0 +1,83 @@
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_ADXL343.h>
+#include <Servo.h>
+
+
+Servo servoHorizontal;  // Servo for left-right movement
+Servo servoVertical;    // Servo for up-down movement
+
+//Indicated pins and Initializes values
+int servoPinHorizontal = 9;
+int servoPinVertical = 10;
+int angleHorizontal = 90;  // Initial horizontal servo angle
+int angleVertical = 90;    // Initial vertical servo angle
+
+Adafruit_ADXL343 accel = Adafruit_ADXL343(12345, &Wire);
+sensors_event_t event;
+
+int r_lower = -100;
+int r_higher = 50;
+int p_lower=-20;
+int p_higher=120;
+
+
+//Initializes serial communication and checking the accelerometer is found
+
+void setup(void) {
+Serial.begin(9600);
+if (!accel.begin()) {
+ Serial.println("Couldn't start");
+ while (1);
+}
+accel.setRange(ADXL343_RANGE_2_G);  // +/-2g. // uses 2g based on sensitivity settings
+Serial.println("ADXL343 found!");
+
+servoHorizontal.attach(servoPinHorizontal);
+servoVertical.attach(servoPinVertical);
+servoHorizontal.write(angleHorizontal);
+servoVertical.write(angleVertical);
+}
+
+const int numReadings = 2;
+double rollAvg = 0;
+double pitchAvg = 0;
+
+void loop() {
+double rollSum = 0;
+double pitchSum = 0;
+
+//averages readings based on user movement
+
+for (int i = 0; i < numReadings; i++) {
+ accel.getEvent(&event);
+
+ double x_Buff = event.acceleration.x;
+ double y_Buff = event.acceleration.y;
+ double z_Buff = event.acceleration.z;
+ double roll = atan2(y_Buff, z_Buff) * 57.3;  // Convert radians to degrees
+ double pitch = atan2(-x_Buff, sqrt(y_Buff * y_Buff + z_Buff * z_Buff)) * 57.3;
+
+ rollSum += roll;
+ pitchSum += pitch;
+
+ delay(30);
+}
+
+rollAvg = rollSum / numReadings;
+pitchAvg = pitchSum / numReadings;
+
+//ensure it does not surpass threshold
+if (rollAvg>r_lower && rollAvg<r_higher){
+ servoHorizontal.write(90+rollAvg);
+ servoVertical.write(90+pitchAvg);
+}else if(rollAvg < r_lower){
+
+servoHorizontal.write(90 + 75);
+}
+//collects data for our reference and verify working adequately
+Serial.print("Roll: "); Serial.print(rollAvg); Serial.print(" ");
+Serial.print("Pitch: "); Serial.print(pitchAvg); Serial.println();
+
+delay(30);
+}
