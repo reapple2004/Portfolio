@@ -1,0 +1,224 @@
+j=input('input the number of joints:')
+m=input('input the number of members:')
+
+%create empty matrix of given dimensions
+C=zeros(j,m);
+
+%input values for C matrix
+fprintf('In this section, input the member and joint number for each member and which joint it meets to set up the connection matrix.')
+empty=[];
+c=0;
+r=0;
+for i=1:m
+    
+    c=input('input the member number:');
+    if c<0 || c>m
+        error('member number must be between 0 and the total number of members',c)
+    end
+    
+    r1=input('input the lower joint number connected to the member: ');
+    if r1<0 || r1>j
+        error('joint number must be between 0 and the total number of joints',r)
+    end
+    
+    r2=input('input the higher joint number connected to the member: ');
+    if r2<0 || r2>j
+        error('joint number must be between 0 and the total number of joints',r)
+    end
+
+    C(r1,c)=1;
+    C(r2,c)=-1;
+
+  
+
+
+end
+
+disp(C)
+
+%check that all columns sum to 2
+check=sum(C,1);
+ideal=zeros(1,m)*2;
+if isequal(check,ideal)~=1
+    fprintf('one or more column in your connection matrix does not sum to 2')
+    disp(C)
+    while isequal(check,ideal)
+        r=input('correct your joint number: ')
+        c=input('correct your member number:')
+        val=input('0 or 1: ')
+        C(r,c)=val;
+    end
+end
+
+%reaction force matrix
+
+Sx=zeros(j,3);
+Sy=zeros(j,3);
+
+%let the first column will be Sx-pin, and let the second will be Sy-pin
+pin=input('input the joint that connects to the pin: ')
+Sx(pin,1)=1;   % 1 acts as a place holder in the matrix to indicate that there is a force there
+Sy(pin,2)=1;
+
+%let the third column be the roller joint
+roller_j=input('input the joint that connects to the roller: ');
+Sy(roller_j,3)=1;
+
+%location matrices
+fprintf('for each joint in this section, input the x and y positions as prompted')
+X=zeros(1,j);
+Y=zeros(1,j);
+
+for i=1:j
+    fprintf('\nfor joint %d: ',i)
+    X(i)=input('input the x-position of the joint: ');
+    Y(i)=input('input the y-position of the joint: ');
+end
+
+
+
+%load vector
+fprintf('in this section, we will construct the load vector. note that we neglect the weight of the structure itself')
+%deadload is neglected!!
+%live load
+
+
+%calculating load vector
+fprintf('In this section, input the external loads');
+L=zeros(2*j,1);
+trig='    ';
+while trig~='exit'
+    trig=menu('enter a force or exit','enter', 'exit');
+    switch trig
+        case 1
+            joint=input('joint: ');
+            hv=menu('is the force horizontal or vertical?','horizontal', 'vertical');
+            switch hv
+                case 1
+                    force_row=joint;
+                case 2
+                    force_row=j+joint;
+            end
+            LL=input('input the value of your force including the sign: ');
+            L(force_row)=LL;
+        case 2
+            trig='exit';
+    end
+
+end
+disp(LL)
+
+%computing
+
+fprintf('this section constructs the matrices for computing')
+%disp(C)
+rad=zeros(j,m);
+diff=zeros(j,m);
+for i=1:m
+    %i'm assuming here that the order of j1 and j2 can be ignored
+    %b'c we accounted for it in the construction of C
+   
+    rad(:,i)=(((X*C(:,i))^2)+((Y*C(:,i))^2))^0.5; %finding radius between j1 and j2
+    diff(1:j,i)=X*C(:,i);       %creating an X & Y vector to represent the direction of each member
+    diff(j+1:2*j,i)=Y*C(:,i);
+
+end
+N=[rad;rad];
+coeff=diff./N;          %using the values in rad and diff to create a matrix of unit vectors "coeff"
+
+St=[Sx;Sy];        %combining the reaction forces acting at the roller and pin
+
+
+M=[C;C];
+F=coeff.*M;
+
+A=[F,St];
+
+T=A\L;      % T is a matrix describing the tension/compression in each member
+            %x = A\b Denotes the solution to the matrix equation Ax = b
+            % L is a column vector with only 1 nonzero value: the
+            % live load
+
+
+
+
+
+%input length and load caluclation to find Pcrit
+lengths=rad(1,:);
+
+pcrit=3054.789.*(lengths.^-2.009);
+
+
+
+
+%finding maximum force
+
+T_compression=T.*(T<0);
+pcrit_relavent=-1*(transpose([pcrit,1,1,1]).*(T<0));
+pcrit_relavent=pcrit_relavent(1:end-3,:);
+T_compression=T_compression(1:end-3,:);
+comparison=pcrit_relavent<(T_compression); %pcrit=-Tc
+
+
+
+%finding limiting factor
+limiter=abs(pcrit_relavent)-abs(T_compression);
+limiter(limiter==0)=NaN;
+[difference, lim_mem]=min(limiter);
+T_scaled=T*(-pcrit(:,lim_mem)/T(lim_mem,:));
+
+%finding max load
+L_max=A*T_scaled;
+
+mL=L_max(force_row);
+
+
+
+
+
+%saving C,X,Y,A,L to a .matfile with max load in L
+C=abs(C);
+title=input('input your file title in the TrussDesign1_MaryJoeBob_A1.mat format: ','s');
+save(title,'C','Sx','Sy','X','Y','L')
+
+%cost calculations
+total_length=sum(lengths);
+cost= j*10 + total_length;
+
+load_cost=abs(mL)/cost;
+
+%uncertainty
+
+U_fit=1.37;
+U_max=mL*U_fit/pcrit(:,lim_mem);
+
+
+%output
+
+title_line=input('input your title line in the format: ''EK301, Section A1, Group 1: Riley A., Connor D., Johnny L. 3/20/2024.'': ',"s");
+
+%fprintf('%s\n',title_line)
+fprintf('Load: %.2f\n',LL)
+fprintf('Member forces in oz: \n')
+for i=1:length(T)-3
+fprintf('member %d: ',i) 
+fprintf('%.2f\n',T(i))
+end
+
+fprintf('member to buckle first: %d',lim_mem)
+fprintf('\n\nReaction forces in oz: \n')
+fprintf('Roller-y: %.2f\n',abs(T(end-3)))
+fprintf('Pin-y: %.2f\n',abs(T(end-1)))
+fprintf('Pin-x: %.2f\n',abs(T(end-2)))
+
+
+fprintf('Maximum load in oz: %.2f\n',mL)
+fprintf('uncertainty of maximum load in oz: %.2f',abs(U_max))
+
+
+fprintf('cost of truss: $%.2f\n', cost)
+
+fprintf('Theoretical max load/cost ratio in oz/$: %.2f\n', load_cost)
+
+
+
